@@ -1,0 +1,33 @@
+:root{
+  --fundo:#f3f6f4; --papel:#fff; --texto:#1b2a26; --suave:#5d6e68; --linha:#d5ded9;
+  --origem:#1f9d55; --destino:#d93a3a; --acao:#0e5c63; --acao-h:#0a464c;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--fundo);color:var(--texto);display:flex;flex-direction:column}
+.busca{position:sticky;top:0;z-index:1000;background:var(--papel);padding:12px;display:grid;gap:8px;grid-template-columns:1fr 1fr auto;border-bottom:1px solid var(--linha);box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.campo{position:relative;display:flex;align-items:center;border:1px solid var(--linha);border-radius:10px;background:#fff;padding:0 10px;gap:8px}
+.campo:focus-within{border-color:var(--acao);box-shadow:0 0 0 3px rgba(14,92,99,.18)}
+.campo input{flex:1;min-width:0;border:0;outline:0;padding:12px 0;font-size:1rem;background:transparent;color:inherit}
+.pino{width:12px;height:12px;border-radius:50%;flex:none}
+.pino-origem{background:var(--origem)} .pino-destino{background:var(--destino)}
+#btn-gps{border:0;background:none;cursor:pointer;font-size:1.2rem;padding:4px;border-radius:6px}
+#btn-gps:hover{background:var(--fundo)}
+#btn-calcular{border:0;border-radius:10px;background:var(--acao);color:#fff;font-weight:600;font-size:1rem;padding:0 20px;cursor:pointer}
+#btn-calcular:hover{background:var(--acao-h)}
+button:focus-visible{outline:3px solid #f0b429;outline-offset:2px}
+#aviso{grid-column:1/-1;margin:0;font-size:.85rem;color:var(--destino);min-height:0}
+#aviso:empty{display:none}
+.sugestoes{position:absolute;top:calc(100% + 4px);left:0;right:0;margin:0;padding:4px 0;list-style:none;background:var(--papel);border:1px solid var(--linha);border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.12);max-height:260px;overflow-y:auto;z-index:1100}
+.sugestoes li{padding:10px 12px;font-size:.92rem;cursor:pointer;line-height:1.3}
+.sugestoes li:hover,.sugestoes li.ativo{background:var(--fundo)}
+main{flex:1;display:flex;flex-direction:column;min-height:0}
+#mapa{flex:1;min-height:55vh;z-index:0}
+.rotas{padding:20px 16px;background:var(--papel);border-top:1px solid var(--linha)}
+.placeholder{margin:0;text-align:center;color:var(--suave)}
+.marcador{width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+.marcador.o{background:var(--origem)} .marcador.d{background:var(--destino)}
+@media(max-width:700px){
+  .busca{grid-template-columns:1fr}
+  #btn-calcular{padding:12px}
+}

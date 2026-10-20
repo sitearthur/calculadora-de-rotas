@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calculadora de Rotas</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="busca">
+    <div class="campo">
+      <span class="pino pino-origem" aria-hidden="true"></span>
+      <input id="origem" type="text" placeholder="De onde você sai?" autocomplete="off" aria-label="Origem">
+      <button id="btn-gps" type="button" title="Usar minha localização atual" aria-label="Usar minha localização atual">🎯</button>
+      <ul class="sugestoes" id="sug-origem" hidden></ul>
+    </div>
+    <div class="campo">
+      <span class="pino pino-destino" aria-hidden="true"></span>
+      <input id="destino" type="text" placeholder="Para onde você vai?" autocomplete="off" aria-label="Destino">
+      <ul class="sugestoes" id="sug-destino" hidden></ul>
+    </div>
+    <button id="btn-calcular" type="button">Calcular rota</button>
+    <p id="aviso" role="status"></p>
+  </header>
+
+  <main>
+    <div id="mapa"></div>
+    <section class="rotas">
+      <p class="placeholder">As rotas aparecerão aqui em breve.</p>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
