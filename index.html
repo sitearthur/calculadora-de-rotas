@@ -46,12 +46,15 @@
 
   <main>
     <div id="mapa"></div>
-    <section class="rotas">
-      <p class="placeholder">As rotas aparecerão aqui em breve.</p>
-    </section>
+    <p id="status-dados" class="status" role="status">Carregando dados de transporte…</p>
+    <aside id="painel" class="painel" hidden aria-label="Opções de rota">
+      <div id="painel-lista"></div>
+      <div id="painel-detalhe" hidden></div>
+    </aside>
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="rotas.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

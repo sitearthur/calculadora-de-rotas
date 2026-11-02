@@ -325,5 +325,231 @@
     }
     msg('');
     enquadrar();
+    calcularRotas();
   });
+
+  // ---------- Dados de transporte e rotas ----------
+  let dados = null, motor = null, promTraj = null, camadaRota = null, opcoes = [], quandoBusca = new Date(), tokenDesenho = 0;
+  const statusEl = $('status-dados');
+  const msgStatus = (t, erro) => { statusEl.textContent = t; statusEl.classList.toggle('erro', !!erro); };
+  const fmt = n => n.toLocaleString('pt-BR');
+
+  // @@helpers
+  const rad = Math.PI / 180;
+  function distM(la1, lo1, la2, lo2) {
+    const p1 = la1 * rad, p2 = la2 * rad;
+    const a = Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin((lo2 - lo1) * rad / 2) ** 2;
+    return 2 * 6371000 * Math.asin(Math.sqrt(a));
+  }
+  function decodificar(s) { // polyline precisão 5 -> [[lat, lon], ...]
+    let i = 0, la = 0, lo = 0;
+    const out = [];
+    while (i < s.length) {
+      const v = [0, 0];
+      for (let k = 0; k < 2; k++) {
+        let r = 0, sh = 0, b;
+        do { b = s.charCodeAt(i++) - 63; r |= (b & 31) << sh; sh += 5; } while (b >= 32);
+        v[k] = (r & 1) ? ~(r >> 1) : (r >> 1);
+      }
+      la += v[0]; lo += v[1];
+      out.push([la / 1e5, lo / 1e5]);
+    }
+    return out;
+  }
+  function acumulado(pts) {
+    const c = [0];
+    for (let i = 1; i < pts.length; i++) c.push(c[i - 1] + distM(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]));
+    return c;
+  }
+  function pontoAo(pts, cum, m) { // ponto do trajeto a m metros do início
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < m) i++;
+    const a = pts[i - 1], b = pts[i], seg = cum[i] - cum[i - 1];
+    const t = seg > 0 ? Math.min(1, Math.max(0, (m - cum[i - 1]) / seg)) : 0;
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  }
+  function trechoEntre(pts, cum, m1, m2) { // pedaço do trajeto entre dois pontos (em metros)
+    const out = [pontoAo(pts, cum, m1)];
+    for (let i = 0; i < pts.length; i++) if (cum[i] > m1 && cum[i] < m2) out.push(pts[i]);
+    out.push(pontoAo(pts, cum, m2));
+    return out;
+  }
+  // @@fim
+
+  const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+  const icMat = nome => el('span', 'material-symbols-outlined', nome);
+  const iconeModo = t => t === 1 ? 'subway' : t === 2 ? 'train' : 'directions_bus';
+  const nomeModo = t => t === 1 ? 'Metrô' : t === 2 ? 'Trem' : 'Ônibus';
+  const nomeParada = pi => dados.paradas[pi][0];
+  const hora = d => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const corTexto = hex => {
+    const n = parseInt(hex, 16), l = 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+    return l > 150 ? '#1b2a26' : '#fff';
+  };
+  const faixa = (a, b) => { const x = Math.max(1, Math.round(a)), y = Math.max(x, Math.round(b)); return x === y ? `${x} min` : `${x}–${y} min`; };
+
+  let selIdx = 0, expandido = false;
+  const painel = $('painel'), vLista = $('painel-lista'), vDet = $('painel-detalhe');
+
+  function calcularRotas() {
+    if (!motor) { msgStatus('Os dados de transporte ainda estão carregando…'); return; }
+    msgStatus('Calculando rotas…');
+    setTimeout(() => {
+      const t0 = performance.now();
+      quandoBusca = new Date();
+      const res = motor.buscar(estado.origem.coord, estado.destino.coord, quandoBusca);
+      opcoes = res.opcoes; selIdx = 0; expandido = false;
+      msgStatus(opcoes.length ? `${opcoes.length} opç${opcoes.length > 1 ? 'ões' : 'ão'} em ${Math.round(performance.now() - t0)} ms` : '');
+      painel.hidden = false;
+      mostrarLista(res.erro);
+      if (opcoes.length) desenhar(0); else limparRota();
+    }, 20);
+  }
+
+  function limparRota() { if (camadaRota) { mapa.removeLayer(camadaRota); camadaRota = null; } }
+
+  function cartaoResumo(o, i) {
+    const c = el('article', 'cartao' + (i === selIdx ? ' sel' : ''));
+    c.addEventListener('click', () => abrirDetalhe(i));
+    const topo = el('div', 'c-topo');
+    topo.appendChild(el('span', 'c-tempo', faixa(o.min, o.max)));
+    const fim = new Date(quandoBusca.getTime() + o.esperado * 60000);
+    topo.appendChild(el('span', 'c-sub', `chega ~${hora(fim)}`));
+    c.appendChild(topo);
+    const ic = el('div', 'c-icones');
+    o.etapas.forEach((e, k) => {
+      if (k) ic.appendChild(el('span', 'c-seta', '›'));
+      if (e.tipo === 'pe') {
+        const s = el('span', 'c-pe'); s.appendChild(icMat('directions_walk'));
+        s.appendChild(document.createTextNode(` ${Math.max(1, Math.round(e.min))} min`));
+        ic.appendChild(s);
+      } else {
+        const rota = dados.rotas[dados.viagens[e.vi].r], chip = el('span', 'chip');
+        chip.style.background = '#' + rota[3]; chip.style.color = corTexto(rota[3]);
+        chip.appendChild(icMat(iconeModo(rota[2]))); chip.appendChild(document.createTextNode(' ' + rota[0]));
+        ic.appendChild(chip);
+      }
+    });
+    c.appendChild(ic);
+    c.appendChild(el('div', 'c-sub', `esperado ~${Math.round(o.esperado)} min · anda ${Math.round(o.peMin)} min · `
+      + (o.baldeacoes ? `${o.baldeacoes} baldeaç${o.baldeacoes > 1 ? 'ões' : 'ão'}` : 'sem baldeação')));
+    return c;
+  }
+
+  function mostrarLista(erro) {
+    vDet.hidden = true; vLista.hidden = false; vLista.innerHTML = '';
+    if (!opcoes.length) {
+      vLista.appendChild(el('p', 'painel-vazio', erro
+        ? `Não há nenhuma parada a até 2 km da ${erro}.`
+        : 'Não encontrei uma rota para este horário. Pode ser que nenhuma linha esteja rodando agora.'));
+      return;
+    }
+    (expandido ? opcoes : opcoes.slice(0, 1)).forEach((o, i) => vLista.appendChild(cartaoResumo(o, i)));
+    if (opcoes.length > 1) {
+      const n = opcoes.length - 1, b = el('button', 'btn-mais');
+      b.type = 'button';
+      b.appendChild(document.createTextNode(expandido ? 'Mostrar menos' : `Mostrar mais ${n} opç${n > 1 ? 'ões' : 'ão'}`));
+      b.appendChild(icMat(expandido ? 'expand_less' : 'expand_more'));
+      b.addEventListener('click', () => { expandido = !expandido; mostrarLista(); });
+      vLista.appendChild(b);
+    }
+  }
+
+  function abrirDetalhe(i) {
+    selIdx = i;
+    desenhar(i);
+    const o = opcoes[i];
+    vLista.hidden = true; vDet.hidden = false; vDet.innerHTML = '';
+    const topo = el('div', 'det-topo');
+    const voltar = el('button', 'icone-btn');
+    voltar.type = 'button'; voltar.title = 'Voltar às opções'; voltar.setAttribute('aria-label', 'Voltar às opções');
+    voltar.appendChild(icMat('arrow_back'));
+    voltar.addEventListener('click', () => mostrarLista());
+    topo.appendChild(voltar);
+    topo.appendChild(el('span', 'c-tempo', faixa(o.min, o.max)));
+    topo.appendChild(el('span', 'c-sub', `chega ~${hora(new Date(quandoBusca.getTime() + o.esperado * 60000))}`));
+    vDet.appendChild(topo);
+
+    const tl = el('div', 'linha-tempo');
+    const no = txt => { const d = el('div', 'no'); d.appendChild(el('span', 'ponto')); d.appendChild(el('span', null, txt)); return d; };
+    const trecho = (cor, pont, conteudo) => {
+      const d = el('div', 'trecho'), r = el('span', 'trilho' + (pont ? ' pont' : ''));
+      r.style.setProperty('--cor', cor); d.appendChild(r); d.appendChild(conteudo); return d;
+    };
+    tl.appendChild(no('Sua origem'));
+    o.etapas.forEach(e => {
+      const t = el('div');
+      if (e.tipo === 'pe') {
+        t.appendChild(icMat('directions_walk'));
+        t.appendChild(document.createTextNode(` Caminhe ${Math.max(1, Math.round(e.min))} min · ${fmt(Math.round(e.m / 10) * 10)} m`));
+        if (e.m > 800) t.appendChild(el('small', null, 'Caminhada longa'));
+        tl.appendChild(trecho('#8a8f8d', true, t));
+        tl.appendChild(no(e.ateParada >= 0 ? nomeParada(e.ateParada) : 'Seu destino'));
+      } else {
+        const rota = dados.rotas[dados.viagens[e.vi].r], chip = el('span', 'chip');
+        chip.style.background = '#' + rota[3]; chip.style.color = corTexto(rota[3]);
+        chip.appendChild(icMat(iconeModo(rota[2]))); chip.appendChild(document.createTextNode(' ' + rota[0]));
+        t.appendChild(chip); t.appendChild(document.createTextNode(` sentido ${e.destino || '?'}`));
+        t.appendChild(el('small', null, `Espera de 0 a ${Math.round(e.espera / 60)} min`));
+        t.appendChild(el('small', null, `${e.nParadas} paradas · ${Math.max(1, Math.round(e.min))} min`));
+        tl.appendChild(trecho('#' + rota[3], false, t));
+        tl.appendChild(no(nomeParada(e.ateParada)));
+      }
+    });
+    vDet.appendChild(tl);
+  }
+
+  async function desenhar(i) {
+    const token = ++tokenDesenho, o = opcoes[i];
+    let traj = null;
+    if (o.etapas.some(e => e.tipo === 'veiculo')) {
+      try {
+        promTraj = promTraj || fetch('dados/trajetos.json').then(r => r.json()).then(j => j.t);
+        traj = await promTraj;
+      } catch (e) { promTraj = null; msgStatus('Não foi possível carregar os trajetos; mostrando as paradas.', true); }
+    }
+    if (token !== tokenDesenho) return;   // outra opção foi escolhida enquanto carregava
+    limparRota();                          // evita acumular traçados
+    const g = L.layerGroup(), todos = [];
+    o.etapas.forEach(e => {
+      if (e.tipo === 'pe') {
+        L.polyline([e.de, e.ate], { color: '#555', weight: 4, dashArray: '1 9', lineCap: 'round' }).addTo(g);
+        todos.push(e.de, e.ate);
+        return;
+      }
+      const v = dados.viagens[e.vi], rota = dados.rotas[v.r], cor = '#' + rota[3];
+      const full = traj ? decodificar(traj[e.vi]) : null, cum = full ? acumulado(full) : null;
+      const pos = k => full ? pontoAo(full, cum, v.m[k]) : [dados.paradas[v.p[k]][1], dados.paradas[v.p[k]][2]];
+      const linha = full ? trechoEntre(full, cum, v.m[e.kDe], v.m[e.kAte]) : [];
+      if (!full) for (let k = e.kDe; k <= e.kAte; k++) linha.push(pos(k));
+      L.polyline(linha, { color: cor, weight: 6, opacity: 0.9 }).addTo(g);
+      todos.push(...linha);
+      for (let k = e.kDe; k <= e.kAte; k++) {
+        const ponta = k === e.kDe || k === e.kAte;
+        L.circleMarker(pos(k), { radius: ponta ? 6 : 3.5, color: ponta ? cor : '#fff', weight: ponta ? 3 : 1, fillColor: ponta ? '#fff' : cor, fillOpacity: 1 })
+          .bindTooltip(nomeParada(v.p[k])).addTo(g);
+      }
+    });
+    g.addTo(mapa);
+    camadaRota = g;
+    if (todos.length) { // deixa livre o espaço do painel
+      const larg = window.innerWidth > 760 ? painel.offsetWidth + 40 : 40;
+      mapa.fitBounds(L.latLngBounds(todos), { paddingTopLeft: [40, 40], paddingBottomRight: [larg, 40] });
+    }
+  }
+
+  (async () => {
+    msgStatus('Carregando dados de transporte…');
+    try {
+      const [rp, rl] = await Promise.all([fetch('dados/paradas.json'), fetch('dados/linhas.json')]);
+      if (!rp.ok || !rl.ok) throw new Error('HTTP');
+      const linhas = await rl.json();
+      dados = { paradas: (await rp.json()).p, rotas: linhas.rotas, viagens: linhas.viagens, servicos: linhas.servicos };
+      motor = Rotas.criar(dados);
+      msgStatus(`${fmt(dados.paradas.length)} paradas e ${fmt(dados.viagens.length)} viagens prontas.`);
+    } catch (e) {
+      msgStatus('Não foi possível carregar a pasta dados/. Abra o site por um servidor local '
+        + '(python -m http.server) e confira se dados/ está ao lado do index.html.', true);
+    }
+  })();
 })();
